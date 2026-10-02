@@ -82,8 +82,21 @@ st.markdown(
         }
 
         div[data-testid="stSelectbox"] label {
-            font-weight: 600;
             color: #334155;
+            font-weight: 600;
+        }
+
+        div[data-testid="stExpander"] {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            margin-bottom: 0.8rem;
+            overflow: hidden;
+        }
+
+        div[data-testid="stExpander"] summary {
+            color: #0f172a;
+            font-weight: 700;
         }
 
         .section-note {
@@ -98,8 +111,8 @@ st.markdown(
             background: #ffffff;
             border: 1px solid #e2e8f0;
             border-radius: 10px;
-            padding: 1.2rem 1.3rem;
             min-height: 155px;
+            padding: 1.2rem 1.3rem;
         }
 
         .mover-card-gain {
@@ -203,6 +216,69 @@ SEASONS = {
 
 
 # -------------------------------------------------------------------------
+# HELPER FUNCTIONS
+# -------------------------------------------------------------------------
+
+def ordinal(number):
+    """Convert an integer into an ordinal string."""
+
+    number = int(number)
+
+    if 10 <= number % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {
+            1: "st",
+            2: "nd",
+            3: "rd",
+        }.get(number % 10, "th")
+
+    return f"{number}{suffix}"
+
+
+def format_team_list(teams):
+    """Convert a list of team names into readable text."""
+
+    teams = list(teams)
+
+    if not teams:
+        return ""
+
+    if len(teams) == 1:
+        return teams[0]
+
+    if len(teams) == 2:
+        return f"{teams[0]} and {teams[1]}"
+
+    return ", ".join(teams[:-1]) + f", and {teams[-1]}"
+
+
+def style_change(value):
+    """Apply formatting to positive and negative changes."""
+
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError):
+        return ""
+
+    if numeric_value > 0:
+        return (
+            "color: #15803d; "
+            "background-color: #f0fdf4; "
+            "font-weight: 600;"
+        )
+
+    if numeric_value < 0:
+        return (
+            "color: #b91c1c; "
+            "background-color: #fef2f2; "
+            "font-weight: 600;"
+        )
+
+    return "color: #64748b;"
+
+
+# -------------------------------------------------------------------------
 # DATA FUNCTIONS
 # -------------------------------------------------------------------------
 
@@ -223,7 +299,11 @@ def load_data(season_code):
     }
 
     try:
-        df = pd.read_csv(url, on_bad_lines="skip")
+        df = pd.read_csv(
+            url,
+            on_bad_lines="skip",
+        )
+
     except Exception as exc:
         raise RuntimeError(
             f"Could not load match data for season {season_code}."
@@ -233,6 +313,7 @@ def load_data(season_code):
 
     if missing_columns:
         missing = ", ".join(sorted(missing_columns))
+
         raise ValueError(
             f"The source data is missing required columns: {missing}"
         )
@@ -261,7 +342,7 @@ def load_data(season_code):
             "FTHG",
             "FTAG",
         ]
-    )
+    ).copy()
 
     df["FTHG"] = df["FTHG"].astype(int)
     df["FTAG"] = df["FTAG"].astype(int)
@@ -344,8 +425,11 @@ def build_league_table(df):
     )
 
     standings = standings.reset_index()
+
     standings = standings.rename(
-        columns={"index": "Team"}
+        columns={
+            "index": "Team",
+        }
     )
 
     standings.index = standings.index + 1
@@ -423,26 +507,9 @@ def compare_tables(original_table, recalculated_table):
     return comparison
 
 
-def format_team_list(teams):
-    """Convert a list of team names into readable text."""
-
-    teams = list(teams)
-
-    if not teams:
-        return ""
-
-    if len(teams) == 1:
-        return teams[0]
-
-    if len(teams) == 2:
-        return f"{teams[0]} and {teams[1]}"
-
-    return ", ".join(teams[:-1]) + f", and {teams[-1]}"
-
-
 @st.cache_data(show_spinner=False)
 def get_all_time_stats():
-    """Calculate aggregate points changes across all seasons."""
+    """Calculate aggregate point changes across all seasons."""
 
     aggregate_changes = {}
 
@@ -496,12 +563,25 @@ def get_all_time_stats():
 
 
 # -------------------------------------------------------------------------
-# SEASON SELECTION
+# 1. SEASON SELECTOR
 # -------------------------------------------------------------------------
+
+st.subheader("Season selector")
+
+st.markdown(
+    """
+    <div class="section-note">
+        Select a Premier League season to recalculate. Every section below
+        updates automatically when a different season is chosen.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 selected_season = st.selectbox(
     "Select a season",
     options=list(SEASONS.keys()),
+    index=0,
 )
 
 season_code = SEASONS[selected_season]
@@ -520,6 +600,7 @@ except Exception as exc:
         "The match data could not be loaded. "
         "Please check the source connection and try again."
     )
+
     st.exception(exc)
     st.stop()
 
@@ -541,374 +622,8 @@ comparison = compare_tables(
     recalculated_table,
 )
 
-
 original_champion = original_table.iloc[0]["Team"]
 recalculated_champion = comparison.iloc[0]["Team"]
-
-
-# -------------------------------------------------------------------------
-# KEY FINDINGS
-# -------------------------------------------------------------------------
-
-st.divider()
-st.subheader("Key findings")
-
-st.markdown(
-    """
-    <div class="section-note">
-        A summary of the most significant changes produced by the
-        recalculation.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-biggest_gd_winner = comparison.loc[
-    comparison["GD_Change"].idxmax()
-]
-
-champion_column, goal_difference_column = st.columns(
-    2,
-    gap="large",
-)
-
-
-with champion_column:
-    st.markdown("#### League winner")
-
-    if original_champion == CITY_NAME:
-        st.success(
-            f"Manchester City finished first in the original "
-            f"table. After City fixtures are removed, "
-            f"**{recalculated_champion}** finishes top."
-        )
-
-    elif original_champion != recalculated_champion:
-        st.warning(
-            f"**{original_champion}** won the original league, "
-            f"but **{recalculated_champion}** moves into first "
-            f"in the recalculated standings."
-        )
-
-    else:
-        st.info(
-            f"Removing City fixtures does not change the winner. "
-            f"**{original_champion}** remains first."
-        )
-
-
-with goal_difference_column:
-    st.markdown("#### Goal-difference impact")
-
-    gd_change = int(
-        biggest_gd_winner["GD_Change"]
-    )
-
-    gd_prefix = "+" if gd_change > 0 else ""
-
-    st.info(
-        f"**{biggest_gd_winner['Team']}** records the largest "
-        f"improvement in goal difference, changing by "
-        f"**{gd_prefix}{gd_change}** after City fixtures "
-        f"are removed."
-    )
-
-
-# -------------------------------------------------------------------------
-# BIGGEST POSITIONAL MOVERS
-# -------------------------------------------------------------------------
-
-st.markdown("### Biggest movers")
-
-st.markdown(
-    f"""
-    <div class="section-note">
-        The clubs with the largest upward and downward movements in
-        the recalculated {selected_season} standings. Tied clubs are
-        shown together.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-largest_gain = int(
-    comparison["Pos_Change"].max()
-)
-
-largest_loss = int(
-    comparison["Pos_Change"].min()
-)
-
-
-if largest_gain > 0:
-    biggest_gainers = comparison[
-        comparison["Pos_Change"] == largest_gain
-    ].copy()
-
-    biggest_gainer_names = format_team_list(
-        biggest_gainers["Team"].tolist()
-    )
-
-    gainer_movements = []
-
-    for new_position, row in biggest_gainers.iterrows():
-        gainer_movements.append(
-            f"{row['Team']}: "
-            f"{int(row['Orig_Rank'])}th to "
-            f"{int(new_position)}th"
-        )
-
-    gainer_position_text = "<br>".join(
-        gainer_movements
-    )
-
-else:
-    biggest_gainers = pd.DataFrame()
-    biggest_gainer_names = "No upward movement"
-    gainer_position_text = (
-        "No club moves above its original position."
-    )
-
-
-if largest_loss < 0:
-    biggest_losers = comparison[
-        comparison["Pos_Change"] == largest_loss
-    ].copy()
-
-    biggest_loser_names = format_team_list(
-        biggest_losers["Team"].tolist()
-    )
-
-    loser_movements = []
-
-    for new_position, row in biggest_losers.iterrows():
-        loser_movements.append(
-            f"{row['Team']}: "
-            f"{int(row['Orig_Rank'])}th to "
-            f"{int(new_position)}th"
-        )
-
-    loser_position_text = "<br>".join(
-        loser_movements
-    )
-
-else:
-    biggest_losers = pd.DataFrame()
-    biggest_loser_names = "No downward movement"
-    loser_position_text = (
-        "No club falls below its original position."
-    )
-
-
-gainer_column, loser_column = st.columns(
-    2,
-    gap="large",
-)
-
-
-with gainer_column:
-    if largest_gain > 0:
-        gain_label = (
-            "place" if largest_gain == 1 else "places"
-        )
-
-        st.markdown(
-            f"""
-            <div class="mover-card mover-card-gain">
-                <div class="mover-label">
-                    Largest upward movement
-                </div>
-                <div class="mover-team">
-                    {biggest_gainer_names}
-                </div>
-                <div class="mover-detail">
-                    <span class="mover-positive">
-                        +{largest_gain} {gain_label}
-                    </span>
-                    <br>
-                    {gainer_position_text}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    else:
-        st.markdown(
-            f"""
-            <div class="mover-card mover-card-gain">
-                <div class="mover-label">
-                    Largest upward movement
-                </div>
-                <div class="mover-team">
-                    {biggest_gainer_names}
-                </div>
-                <div class="mover-detail">
-                    {gainer_position_text}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-with loser_column:
-    if largest_loss < 0:
-        places_lost = abs(largest_loss)
-
-        loss_label = (
-            "place" if places_lost == 1 else "places"
-        )
-
-        st.markdown(
-            f"""
-            <div class="mover-card mover-card-loss">
-                <div class="mover-label">
-                    Largest downward movement
-                </div>
-                <div class="mover-team">
-                    {biggest_loser_names}
-                </div>
-                <div class="mover-detail">
-                    <span class="mover-negative">
-                        -{places_lost} {loss_label}
-                    </span>
-                    <br>
-                    {loser_position_text}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    else:
-        st.markdown(
-            f"""
-            <div class="mover-card mover-card-loss">
-                <div class="mover-label">
-                    Largest downward movement
-                </div>
-                <div class="mover-team">
-                    {biggest_loser_names}
-                </div>
-                <div class="mover-detail">
-                    {loser_position_text}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-# -------------------------------------------------------------------------
-# EUROPEAN AND RELEGATION POSITIONS
-# -------------------------------------------------------------------------
-
-st.markdown("### Qualification and relegation")
-
-original_top_four = set(
-    original_table.head(4)["Team"]
-)
-
-recalculated_top_four = set(
-    comparison.head(4)["Team"]
-)
-
-original_relegation_places = set(
-    original_table.tail(3)["Team"]
-)
-
-# The simulated table contains 19 clubs, so the bottom two
-# are treated as the equivalent relegation positions.
-recalculated_relegation_places = set(
-    comparison.tail(2)["Team"]
-)
-
-
-top_four_column, relegation_column = st.columns(
-    2,
-    gap="large",
-)
-
-
-with top_four_column:
-    st.markdown("#### European places")
-
-    falls_out = (
-        original_top_four
-        - recalculated_top_four
-        - {CITY_NAME}
-    )
-
-    moves_in = (
-        recalculated_top_four
-        - original_top_four
-    )
-
-    if falls_out:
-        st.error(
-            "**Falls out of the top four:** "
-            + ", ".join(sorted(falls_out))
-        )
-
-    if moves_in:
-        st.success(
-            "**Moves into the top four:** "
-            + ", ".join(sorted(moves_in))
-        )
-
-    if not falls_out and not moves_in:
-        st.info(
-            "The composition of the top four does not change."
-        )
-
-    st.caption(
-        "This is a mathematical comparison only and does not "
-        "attempt to recreate historical UEFA qualification rules."
-    )
-
-
-with relegation_column:
-    st.markdown("#### Relegation places")
-
-    avoids_relegation = (
-        original_relegation_places
-        - recalculated_relegation_places
-        - {CITY_NAME}
-    )
-
-    drops_into_relegation = (
-        recalculated_relegation_places
-        - original_relegation_places
-    )
-
-    if avoids_relegation:
-        st.success(
-            "**Moves out of the relegation places:** "
-            + ", ".join(sorted(avoids_relegation))
-        )
-
-    if drops_into_relegation:
-        st.error(
-            "**Drops into the relegation places:** "
-            + ", ".join(sorted(drops_into_relegation))
-        )
-
-    if (
-        not avoids_relegation
-        and not drops_into_relegation
-    ):
-        st.info(
-            "Removing City fixtures does not change the "
-            "relegation picture."
-        )
-
-    st.caption(
-        "Because the simulated league contains 19 clubs, the "
-        "bottom two positions are treated as the relegation places."
-    )
 
 
 # -------------------------------------------------------------------------
@@ -958,17 +673,17 @@ animation_json = json.dumps(
 
 
 # -------------------------------------------------------------------------
-# ANIMATED TABLE
+# 2. ANIMATED LEAGUE TABLE
 # -------------------------------------------------------------------------
 
 st.divider()
 st.subheader("Animated league table")
 
 st.markdown(
-    """
+    f"""
     <div class="section-note">
-        The table begins with the original final standings. Select
-        <strong>Recalculate standings</strong> to remove Manchester
+        The table begins with the original {selected_season} final standings.
+        Select <strong>Recalculate standings</strong> to remove Manchester
         City and reorder the remaining clubs.
     </div>
     """,
@@ -1064,7 +779,7 @@ html_code = f"""
         }}
 
         .board {{
-            height: 910px;
+            height: 890px;
             padding: 10px;
             position: relative;
             width: 100%;
@@ -1233,6 +948,7 @@ html_code = f"""
     <script>
         const data = {animation_json};
         const board = document.getElementById("board");
+
         const applyButton = document.getElementById(
             "apply-button"
         );
@@ -1321,6 +1037,10 @@ html_code = f"""
                         "team-" + teamID
                     );
 
+                    if (!row) {{
+                        return;
+                    }}
+
                     const rankCell = row.querySelector(
                         ".rank-column"
                     );
@@ -1345,6 +1065,11 @@ html_code = f"""
 
                     changeCell.style.opacity = "1";
 
+                    changeCell.classList.remove(
+                        "negative",
+                        "neutral"
+                    );
+
                     if (item.pts_change < 0) {{
                         changeCell.classList.add("negative");
                     }} else {{
@@ -1359,8 +1084,10 @@ html_code = f"""
 
                     if (item.pos_change > 0) {{
                         row.classList.add("moves-up");
+
                     }} else if (item.pos_change < 0) {{
                         row.classList.add("moves-down");
+
                     }} else {{
                         row.classList.add("unchanged");
                     }}
@@ -1388,7 +1115,7 @@ components.html(
 
 
 # -------------------------------------------------------------------------
-# DETAILED DATA TABLE
+# 3. RECALCULATED LEAGUE TABLE
 # -------------------------------------------------------------------------
 
 st.divider()
@@ -1397,9 +1124,9 @@ st.subheader("Recalculated league table")
 st.markdown(
     """
     <div class="section-note">
-        Position change compares each club's original finishing
-        position with its place after Manchester City fixtures are
-        removed. A positive value indicates that the club moves up.
+        Position change compares each club's original finishing position
+        with its position after Manchester City fixtures are removed.
+        A positive value indicates that the club moves up.
     </div>
     """,
     unsafe_allow_html=True,
@@ -1439,31 +1166,6 @@ comparison_display = comparison_display.rename(
 )
 
 
-def style_change(value):
-    """Apply formatting to positive and negative changes."""
-
-    try:
-        numeric_value = float(value)
-    except (TypeError, ValueError):
-        return ""
-
-    if numeric_value > 0:
-        return (
-            "color: #15803d; "
-            "background-color: #f0fdf4; "
-            "font-weight: 600;"
-        )
-
-    if numeric_value < 0:
-        return (
-            "color: #b91c1c; "
-            "background-color: #fef2f2; "
-            "font-weight: 600;"
-        )
-
-    return "color: #64748b;"
-
-
 styled_table = (
     comparison_display.style
     .map(
@@ -1493,19 +1195,417 @@ st.dataframe(
 
 
 # -------------------------------------------------------------------------
-# AGGREGATE ANALYSIS
+# CALCULATE FINDINGS
+# -------------------------------------------------------------------------
+
+biggest_gd_winner = comparison.loc[
+    comparison["GD_Change"].idxmax()
+]
+
+largest_gain = int(
+    comparison["Pos_Change"].max()
+)
+
+largest_loss = int(
+    comparison["Pos_Change"].min()
+)
+
+
+if largest_gain > 0:
+    biggest_gainers = comparison[
+        comparison["Pos_Change"] == largest_gain
+    ].copy()
+
+    biggest_gainer_names = format_team_list(
+        biggest_gainers["Team"].tolist()
+    )
+
+    gainer_movements = []
+
+    for new_position, row in biggest_gainers.iterrows():
+        gainer_movements.append(
+            f"{row['Team']}: "
+            f"{ordinal(row['Orig_Rank'])} to "
+            f"{ordinal(new_position)}"
+        )
+
+    gainer_position_text = "<br>".join(
+        gainer_movements
+    )
+
+else:
+    biggest_gainers = pd.DataFrame()
+    biggest_gainer_names = "No upward movement"
+
+    gainer_position_text = (
+        "No club moves above its original position."
+    )
+
+
+if largest_loss < 0:
+    biggest_losers = comparison[
+        comparison["Pos_Change"] == largest_loss
+    ].copy()
+
+    biggest_loser_names = format_team_list(
+        biggest_losers["Team"].tolist()
+    )
+
+    loser_movements = []
+
+    for new_position, row in biggest_losers.iterrows():
+        loser_movements.append(
+            f"{row['Team']}: "
+            f"{ordinal(row['Orig_Rank'])} to "
+            f"{ordinal(new_position)}"
+        )
+
+    loser_position_text = "<br>".join(
+        loser_movements
+    )
+
+else:
+    biggest_losers = pd.DataFrame()
+    biggest_loser_names = "No downward movement"
+
+    loser_position_text = (
+        "No club falls below its original position."
+    )
+
+
+original_top_four = set(
+    original_table.head(4)["Team"]
+)
+
+recalculated_top_four = set(
+    comparison.head(4)["Team"]
+)
+
+original_relegation_places = set(
+    original_table.tail(3)["Team"]
+)
+
+# The simulated table contains 19 clubs, so the bottom two
+# are treated as the equivalent relegation positions.
+recalculated_relegation_places = set(
+    comparison.tail(2)["Team"]
+)
+
+falls_out = (
+    original_top_four
+    - recalculated_top_four
+    - {CITY_NAME}
+)
+
+moves_in = (
+    recalculated_top_four
+    - original_top_four
+)
+
+avoids_relegation = (
+    original_relegation_places
+    - recalculated_relegation_places
+    - {CITY_NAME}
+)
+
+drops_into_relegation = (
+    recalculated_relegation_places
+    - original_relegation_places
+)
+
+
+# -------------------------------------------------------------------------
+# 4. COLLAPSIBLE ANALYSIS SECTIONS
 # -------------------------------------------------------------------------
 
 st.divider()
-st.subheader("Aggregate impact across nine seasons")
+st.subheader("Season analysis")
 
 st.markdown(
     """
     <div class="section-note">
-        This chart combines the point changes recorded from 2009/10
-        to 2017/18. Clubs with the largest negative values are those
-        that earned the most points against Manchester City during
-        the seasons in which they appeared.
+        Expand the sections below to examine the main consequences of
+        removing Manchester City's fixtures.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# -------------------------------------------------------------------------
+# 4A. KEY FINDINGS
+# -------------------------------------------------------------------------
+
+with st.expander(
+    "Key findings",
+    expanded=False,
+):
+    champion_column, goal_difference_column = st.columns(
+        2,
+        gap="large",
+    )
+
+    with champion_column:
+        st.markdown("#### League winner")
+
+        if original_champion == CITY_NAME:
+            st.success(
+                f"Manchester City finished first in the original "
+                f"{selected_season} table. After City fixtures are "
+                f"removed, **{recalculated_champion}** finishes top."
+            )
+
+        elif original_champion != recalculated_champion:
+            st.warning(
+                f"**{original_champion}** won the original league, "
+                f"but **{recalculated_champion}** moves into first "
+                f"in the recalculated standings."
+            )
+
+        else:
+            st.info(
+                f"Removing City fixtures does not change the winner. "
+                f"**{original_champion}** remains first."
+            )
+
+    with goal_difference_column:
+        st.markdown("#### Goal-difference impact")
+
+        gd_change = int(
+            biggest_gd_winner["GD_Change"]
+        )
+
+        gd_prefix = "+" if gd_change > 0 else ""
+
+        st.info(
+            f"**{biggest_gd_winner['Team']}** records the largest "
+            f"improvement in goal difference, changing by "
+            f"**{gd_prefix}{gd_change}** after City fixtures "
+            f"are removed."
+        )
+
+
+# -------------------------------------------------------------------------
+# 4B. BIGGEST MOVERS
+# -------------------------------------------------------------------------
+
+with st.expander(
+    "Biggest movers",
+    expanded=False,
+):
+    st.markdown(
+        f"""
+        <div class="section-note">
+            The clubs with the largest upward and downward movements in
+            the recalculated {selected_season} standings. Tied clubs are
+            shown together.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    gainer_column, loser_column = st.columns(
+        2,
+        gap="large",
+    )
+
+    with gainer_column:
+        if largest_gain > 0:
+            gain_label = (
+                "place"
+                if largest_gain == 1
+                else "places"
+            )
+
+            st.markdown(
+                f"""
+                <div class="mover-card mover-card-gain">
+                    <div class="mover-label">
+                        Largest upward movement
+                    </div>
+
+                    <div class="mover-team">
+                        {biggest_gainer_names}
+                    </div>
+
+                    <div class="mover-detail">
+                        <span class="mover-positive">
+                            +{largest_gain} {gain_label}
+                        </span>
+                        <br>
+                        {gainer_position_text}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        else:
+            st.markdown(
+                f"""
+                <div class="mover-card mover-card-gain">
+                    <div class="mover-label">
+                        Largest upward movement
+                    </div>
+
+                    <div class="mover-team">
+                        {biggest_gainer_names}
+                    </div>
+
+                    <div class="mover-detail">
+                        {gainer_position_text}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    with loser_column:
+        if largest_loss < 0:
+            places_lost = abs(largest_loss)
+
+            loss_label = (
+                "place"
+                if places_lost == 1
+                else "places"
+            )
+
+            st.markdown(
+                f"""
+                <div class="mover-card mover-card-loss">
+                    <div class="mover-label">
+                        Largest downward movement
+                    </div>
+
+                    <div class="mover-team">
+                        {biggest_loser_names}
+                    </div>
+
+                    <div class="mover-detail">
+                        <span class="mover-negative">
+                            -{places_lost} {loss_label}
+                        </span>
+                        <br>
+                        {loser_position_text}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        else:
+            st.markdown(
+                f"""
+                <div class="mover-card mover-card-loss">
+                    <div class="mover-label">
+                        Largest downward movement
+                    </div>
+
+                    <div class="mover-team">
+                        {biggest_loser_names}
+                    </div>
+
+                    <div class="mover-detail">
+                        {loser_position_text}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+# -------------------------------------------------------------------------
+# 4C. EUROPEAN QUALIFICATION AND RELEGATION
+# -------------------------------------------------------------------------
+
+with st.expander(
+    "European qualification and relegation changes",
+    expanded=False,
+):
+    st.markdown(
+        """
+        <div class="section-note">
+            This section compares the European qualification and relegation
+            positions in the original and recalculated tables.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    top_four_column, relegation_column = st.columns(
+        2,
+        gap="large",
+    )
+
+    with top_four_column:
+        st.markdown("#### European places")
+
+        if falls_out:
+            st.error(
+                "**Falls out of the top four:** "
+                + ", ".join(sorted(falls_out))
+            )
+
+        if moves_in:
+            st.success(
+                "**Moves into the top four:** "
+                + ", ".join(sorted(moves_in))
+            )
+
+        if not falls_out and not moves_in:
+            st.info(
+                "The composition of the top four does not change."
+            )
+
+        st.caption(
+            "This is a mathematical comparison only and does not "
+            "attempt to recreate historical UEFA qualification rules."
+        )
+
+    with relegation_column:
+        st.markdown("#### Relegation places")
+
+        if avoids_relegation:
+            st.success(
+                "**Moves out of the relegation places:** "
+                + ", ".join(sorted(avoids_relegation))
+            )
+
+        if drops_into_relegation:
+            st.error(
+                "**Drops into the relegation places:** "
+                + ", ".join(sorted(drops_into_relegation))
+            )
+
+        if (
+            not avoids_relegation
+            and not drops_into_relegation
+        ):
+            st.info(
+                "Removing City fixtures does not change the "
+                "relegation picture."
+            )
+
+        st.caption(
+            "Because the simulated league contains 19 clubs, the "
+            "bottom two positions are treated as the relegation places."
+        )
+
+
+# -------------------------------------------------------------------------
+# 5. NINE-YEAR AGGREGATE IMPACT CHART
+# -------------------------------------------------------------------------
+
+st.divider()
+st.subheader("Nine-year aggregate impact")
+
+st.markdown(
+    """
+    <div class="section-note">
+        This chart combines the point changes recorded from 2009/10 to
+        2017/18. Clubs with the largest negative values are those that
+        earned the most points against Manchester City during the seasons
+        in which they appeared.
     </div>
     """,
     unsafe_allow_html=True,
@@ -1522,11 +1622,17 @@ try:
         color="#b91c1c",
     )
 
-except Exception:
+except Exception as exc:
     st.warning(
         "The aggregate chart could not be calculated because one "
         "or more seasons could not be loaded."
     )
+
+    with st.expander(
+        "Show aggregate calculation error",
+        expanded=False,
+    ):
+        st.exception(exc)
 
 
 # -------------------------------------------------------------------------
@@ -1536,12 +1642,12 @@ except Exception:
 st.markdown(
     """
     <div class="footer-note">
-        <strong>Methodology note:</strong> This simulation removes
-        every Manchester City fixture and recalculates points, goals
-        scored, goals conceded and goal difference from the remaining
-        matches. It does not account for behavioural changes, fixture
-        sequencing, historical competition rules or other consequences
-        that might arise in a genuine 19-team league.
+        <strong>Methodology note:</strong> This simulation removes every
+        Manchester City fixture and recalculates points, goals scored,
+        goals conceded and goal difference from the remaining matches.
+        It does not account for behavioural changes, fixture sequencing,
+        historical competition rules or other consequences that might
+        arise in a genuine 19-team league.
     </div>
     """,
     unsafe_allow_html=True,
