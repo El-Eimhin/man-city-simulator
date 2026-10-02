@@ -1464,48 +1464,6 @@ with st.expander(
         )
 
 
-# -------------------------------------------------------------------------
-# 5. NINE-YEAR AGGREGATE IMPACT CHART
-# -------------------------------------------------------------------------
-
-st.divider()
-st.subheader("Nine-year aggregate impact")
-
-st.markdown(
-    """
-    <div class="section-note">
-        This chart combines the point changes recorded from 2009/10 to
-        2017/18. Clubs with the largest negative values are those that
-        earned the most points against Manchester City during the seasons
-        in which they appeared.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-try:
-    with st.spinner("Calculating aggregate results..."):
-        all_time_df = get_all_time_stats()
-
-    st.bar_chart(
-        all_time_df,
-        height=520,
-        color="#b91c1c",
-    )
-
-except Exception as exc:
-    st.warning(
-        "The aggregate chart could not be calculated because one "
-        "or more seasons could not be loaded."
-    )
-
-    with st.expander(
-        "Show aggregate calculation error",
-        expanded=False,
-    ):
-        st.exception(exc)
-
 
 # -------------------------------------------------------------------------
 # METHODOLOGY NOTE
